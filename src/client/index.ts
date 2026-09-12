@@ -1,17 +1,16 @@
 /** Browser plugin registering the visual Workflow conversation view. */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+// Type-only imports load the current client Context and slot declarations.
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type {} from '@deepseek-ai/dsh-client-ui-trajectory/client'
 import { en, NS, zh } from './locales.ts'
-import { registerWorkflowAssistantDefinition } from './projection/assistant-definition.ts'
-import { registerWorkflowCompactionDefinitions } from './projection/compaction-definition.ts'
-import { registerWorkflowMessageDefinitions } from './projection/message-definitions.ts'
-import { registerWorkflowRequestHeaderDefinition } from './projection/request-header-definition.ts'
-import { registerWorkflowConversationView } from './projection/snapshot-builder.ts'
-import { registerWorkflowSurfaceDefinition } from './projection/surface-definition.ts'
-import { registerWorkflowToolDefinition } from './projection/tool-definition.ts'
 import { WorkflowView, type WorkflowViewInjected } from './WorkflowView.tsx'
 
 export { WorkflowJsonInspector } from './WorkflowJsonInspector.tsx'
@@ -24,32 +23,26 @@ export type {
 } from './workflow-model.ts'
 export type { WorkflowKey } from './locales.ts'
 
-/** Required services: view slots, Workflow projection registries, Session paging, and localization. */
-export const inject = ['slots', 'conversationEvents', 'conversationViews', 'sessions', 'locale']
+/** Required services: the conversation slot, Session paging, trajectory projection, and localization. */
+export const inject = ['slots', 'sessions', 'locale']
 
 /** Register the independently installable Workflow view tab. */
 export function apply(ctx: Context): void {
+  // Published host and client packages both merge `ctx.sessions`; this plugin
+  // consumes the client object layer supplied by api-session-controller.
+  const sessions = ctx.sessions as unknown as ISessions
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-workflow: dictionaries')
-  registerWorkflowMessageDefinitions(ctx)
-  registerWorkflowSurfaceDefinition(ctx)
-  registerWorkflowRequestHeaderDefinition(ctx)
-  registerWorkflowAssistantDefinition(ctx)
-  registerWorkflowToolDefinition(ctx)
-  registerWorkflowCompactionDefinitions(ctx)
-  registerWorkflowConversationView(ctx)
   const t = ctx.locale.bind(NS)
   const loadOlder = (sessionId: SessionId): (() => Promise<boolean>) => {
-    const session = ctx.sessions.binding(sessionId)?.session
-    if (session === undefined) {
+    const binding = sessions.binding(sessionId)
+    const session = binding?.session
+    if (binding === undefined || session === undefined) {
       throw new Error(`ui-workflow: session "${sessionId}" is unavailable`)
     }
     return async () => {
-      // rc.8 session paging returns void; detect real view growth by
-      // comparing the Workflow view snapshot before and after, matching the
-      // upstream trajectory plugin's change detection.
-      const before = session.getSnapshot().views.get('workflow')
+      const before = binding.eventSource.getSnapshot().revision
       await session.loadOlder()
-      return session.getSnapshot().views.get('workflow') !== before
+      return binding.eventSource.getSnapshot().revision !== before
     }
   }
   ctx.slots.inject('conversation.view', () => ctx.slots.register({
@@ -60,6 +53,13 @@ export function apply(ctx: Context): void {
     label: () => t('view.workflow'),
     inject: (sessionId: SessionId): WorkflowViewInjected => ({
       loadOlder: loadOlder(sessionId),
+      eventWindow: () => {
+        const binding = sessions.binding(sessionId)
+        if (binding === undefined) {
+          throw new Error(`ui-workflow: session "${sessionId}" is unavailable`)
+        }
+        return binding.eventSource.getSnapshot()
+      },
     }),
   }, WorkflowView))
 }

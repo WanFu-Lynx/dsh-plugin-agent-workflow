@@ -28,7 +28,7 @@ afterEach(() => {
 describe('Workflow tsdown client artifact', () => {
   const code = readBundle()
 
-  it.skipIf(code === undefined)('hands off as its own module without a runtime import of ui-trajectory', async () => {
+  it.skipIf(code === undefined)('hands off as its own module without stale client-runtime imports', async () => {
     let handoff: Handoff | undefined
     ;(window as Win).__ModuleLoader__ = { load: (value) => { handoff = value } }
     // oxlint-disable-next-line typescript/no-implied-eval, typescript/no-unsafe-call
@@ -39,7 +39,6 @@ describe('Workflow tsdown client artifact', () => {
       ['react', await import('react')],
       ['react/jsx-runtime', await import('react/jsx-runtime')],
       ['react-dom', await import('react-dom')],
-      ['@deepseek-ai/dsh-client-runtime/client', {}],
       ['@deepseek-ai/dsh-client-ui-primitives', {}],
     ])
     const exports = handoff!.factory((specifier) => {
@@ -49,9 +48,8 @@ describe('Workflow tsdown client artifact', () => {
       return value
     })
     expect(exports.apply).toBeTypeOf('function')
-    expect(exports.inject).toEqual([
-      'slots', 'conversationEvents', 'conversationViews', 'sessions', 'locale',
-    ])
+    expect(exports.inject).toEqual(['slots', 'sessions', 'locale'])
+    expect(requested).not.toContain('@deepseek-ai/dsh-client-runtime/client')
     expect(requested).not.toContain('@deepseek-ai/dsh-client-ui-trajectory/client')
     expect(document.querySelectorAll(`style[data-plugin=${JSON.stringify(PLUGIN_ID)}]`).length).toBeGreaterThan(0)
   })

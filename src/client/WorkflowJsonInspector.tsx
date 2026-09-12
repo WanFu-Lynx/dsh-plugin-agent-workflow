@@ -141,7 +141,6 @@ export function WorkflowJsonInspector({
         open={dialogOpen}
         onClose={closeDialog}
         title={dialogTitle}
-        closeLabel={t('workflow.json.close')}
         className={requiredCssClass('jsonDialog')}
         headless
       >

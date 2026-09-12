@@ -7,12 +7,11 @@ import type {
   AssistantBlock,
   AssistantMessageNode,
   ConversationLocation,
-  ConversationSnapshot,
-  RequestInspectionSnapshot,
   RequestPromptChange,
   ToolCallBlock,
   ToolResultNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { TrajectorySnapshot } from '@deepseek-ai/dsh-client-ui-trajectory/client'
 import type { WorkflowRequestView } from './contract.ts'
 import type {
   WorkflowCellProps,
@@ -35,12 +34,12 @@ export interface WorkflowProjectionTurnModel {
 
 /** Snapshot slice the workflow view folds. */
 export interface WorkflowLayoutInput {
-  nodes: ConversationSnapshot['nodes']
+  nodes: TrajectorySnapshot['eventNodes']
   eventLocations?: ReadonlyMap<number, ConversationLocation>
-  partial: ConversationSnapshot['partial']
-  runningCalls: ConversationSnapshot['runningCalls']
+  partial: TrajectorySnapshot['partial']
+  runningCalls: TrajectorySnapshot['runningCalls']
   requests?: readonly WorkflowRequestView[]
-  callSchemas?: RequestInspectionSnapshot['callSchemas']
+  callSchemas?: TrajectorySnapshot['callSchemas']
 }
 
 interface UsageLike {
@@ -73,7 +72,7 @@ type AssistantRequestView = Extract<WorkflowRequestView, { purpose: 'assistant' 
 type CompactionRequestView = Extract<WorkflowRequestView, { purpose: 'compaction' }>
 
 type InputNode = Extract<
-  ConversationSnapshot['nodes'][number],
+  TrajectorySnapshot['eventNodes'][number],
   { kind: 'user' | 'steering' | 'context' }
 >
 
@@ -81,7 +80,7 @@ type OrderedLayoutEntry =
   | {
     kind: 'node'
     seq: number
-    node: ConversationSnapshot['nodes'][number]
+    node: TrajectorySnapshot['eventNodes'][number]
     nodeIndex: number
   }
   | {
@@ -125,7 +124,7 @@ function inputCellDetail(node: InputNode): Pick<
     sourceSeq: node.seq,
     messageSource: node.source,
     inputDetail: detailContent(node.content),
-    sourceBlocks: node.content.map(block => sourceBlock(block)),
+    sourceBlocks: node.content.map((block: unknown) => sourceBlock(block)),
     timeSeconds: 0,
     startedAt: finiteTime(node.time),
   }
@@ -437,7 +436,7 @@ export function deriveWorkflowLayout(input: WorkflowLayoutInput): readonly Workf
               : resultAsText(resultPreview)),
             ...(node.call !== null ? { inputDetail: node.call.argsRaw } : {}),
             outputDetail: detailResult(node),
-            outputBlocks: node.content.map(block => sourceBlock(block)),
+            outputBlocks: node.content.map((block: unknown) => sourceBlock(block)),
             ...resultPreview,
             callId: node.callId,
             isError: node.isError,
@@ -532,7 +531,7 @@ export function deriveWorkflowLayout(input: WorkflowLayoutInput): readonly Workf
  */
 export function appendWorkflowPartialLayout(
   turns: readonly WorkflowProjectionTurnModel[],
-  partial: ConversationSnapshot['partial'],
+  partial: TrajectorySnapshot['partial'],
   lastIndex: number,
 ): readonly WorkflowProjectionTurnModel[] {
   if (partial === null) return turns
@@ -585,7 +584,7 @@ export function appendWorkflowPartialLayout(
 
 function attachToolSchema(
   laid: LaidCell,
-  callSchemas: RequestInspectionSnapshot['callSchemas'] | undefined,
+  callSchemas: TrajectorySnapshot['callSchemas'] | undefined,
 ): void {
   if (laid.callId === undefined || callSchemas === undefined) return
   const schema = callSchemas.get(laid.callId)
@@ -859,7 +858,7 @@ function stringifySourceValue(value: unknown): string {
  */
 function enclosingUserTurn(
   followingAssistant: AssistantMessageNode | undefined,
-  partial: ConversationSnapshot['partial'],
+  partial: TrajectorySnapshot['partial'],
   lastAssistantTurn: number | null,
 ): number {
   if (followingAssistant !== undefined) return followingAssistant.turn
@@ -870,7 +869,7 @@ function enclosingUserTurn(
 
 function steeringPlacement(
   followingAssistant: AssistantMessageNode | undefined,
-  partial: ConversationSnapshot['partial'],
+  partial: TrajectorySnapshot['partial'],
   lastAssistantTurn: number | null,
   location: ConversationLocation | undefined,
 ): { turn: number; step?: number } {
@@ -893,7 +892,7 @@ function steeringPlacement(
 }
 
 function indexFollowingAssistants(
-  nodes: ConversationSnapshot['nodes'],
+  nodes: TrajectorySnapshot['eventNodes'],
 ): readonly (AssistantMessageNode | undefined)[] {
   const following = new Array<AssistantMessageNode | undefined>(nodes.length)
   let assistant: AssistantMessageNode | undefined
@@ -906,9 +905,9 @@ function indexFollowingAssistants(
 }
 
 function enclosingPromptTurn(
-  nodes: ConversationSnapshot['nodes'],
+  nodes: TrajectorySnapshot['eventNodes'],
   seq: number,
-  partial: ConversationSnapshot['partial'],
+  partial: TrajectorySnapshot['partial'],
 ): number {
   const next = nodes.find(node =>
     node.seq > seq && node.kind === 'assistant' && node.step > 0)
@@ -918,8 +917,8 @@ function enclosingPromptTurn(
 
 /** Earliest raw turn represented by the selected workflow branch. */
 function firstVisibleTurn(
-  nodes: ConversationSnapshot['nodes'],
-  partial: ConversationSnapshot['partial'],
+  nodes: TrajectorySnapshot['eventNodes'],
+  partial: TrajectorySnapshot['partial'],
 ): number {
   const turns = nodes.flatMap(node =>
     node.kind === 'assistant' && node.turn > 0
@@ -940,7 +939,7 @@ function attachUsage(cell: WorkflowCellProps, usage: UsageLike | undefined): voi
   if (usage.reasoningTokens !== undefined) cell.think = usage.reasoningTokens
 }
 
-function indexResults(nodes: ConversationSnapshot['nodes']): Map<string, ToolResultNode> {
+function indexResults(nodes: TrajectorySnapshot['eventNodes']): Map<string, ToolResultNode> {
   const map = new Map<string, ToolResultNode>()
   for (const node of nodes) {
     if (node.kind === 'tool-result') map.set(node.callId, node)
@@ -948,7 +947,7 @@ function indexResults(nodes: ConversationSnapshot['nodes']): Map<string, ToolRes
   return map
 }
 
-function indexAssistantCallIds(nodes: ConversationSnapshot['nodes']): ReadonlySet<string> {
+function indexAssistantCallIds(nodes: TrajectorySnapshot['eventNodes']): ReadonlySet<string> {
   const ids = new Set<string>()
   for (const node of nodes) {
     if (node.kind !== 'assistant') continue

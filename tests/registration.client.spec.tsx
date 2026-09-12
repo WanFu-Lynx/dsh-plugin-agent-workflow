@@ -4,19 +4,14 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { apply, inject } from '../src/client/index.ts'
 import { WorkflowToolResult, WorkflowView } from '../src/client/WorkflowView.tsx'
-import { EMPTY_WORKFLOW_SNAPSHOT } from '../src/client/projection/snapshot-builder.ts'
+import { EMPTY_WORKFLOW_SNAPSHOT } from '../src/client/projection/snapshot.ts'
 
 afterEach(cleanup)
 
-function bench(options?: {
-  readonly workflowBefore?: unknown
-  readonly workflowAfter?: unknown
-}) {
-  const eventDefinitions: { kind: string }[] = []
-  const viewDefinitions: { target: string }[] = []
+function bench(options?: { readonly pagingChanges?: boolean }) {
   const slotEntries: {
     options: {
       id: string
@@ -25,15 +20,16 @@ function bench(options?: {
       inject: (id: SessionId) => unknown
     }
   }[] = []
-  let loaded = false
-  const workflowBefore = options?.workflowBefore ?? EMPTY_WORKFLOW_SNAPSHOT
-  const workflowAfter = options?.workflowAfter ?? workflowBefore
+  let revision = 0
+  const entries: never[] = []
+  const eventWindow = () => ({
+    entries,
+    hasMore: false,
+    revision,
+    change: { kind: 'replace' as const, entries },
+  })
   const session = {
-    getSnapshot: () => ({
-      marker: Symbol(),
-      views: new Map([['workflow', loaded ? workflowAfter : workflowBefore]]),
-    }),
-    loadOlder: async () => { loaded = true },
+    loadOlder: async () => { if (options?.pagingChanges === true) revision += 1 },
   }
   const ctx = {
     effect: (install: () => () => void) => install(),
@@ -41,19 +37,10 @@ function bench(options?: {
       register: () => () => {},
       bind: () => (key: string) => key === 'view.workflow' ? 'Workflow' : key,
     },
-    conversationEvents: {
-      register: (definition: { kind: string }) => {
-        eventDefinitions.push(definition)
-        return () => {}
-      },
-    },
-    conversationViews: {
-      register: (definition: { target: string }) => {
-        viewDefinitions.push(definition)
-        return () => {}
-      },
-    },
-    sessions: { binding: () => ({ session }) },
+    sessions: { binding: () => ({
+      session,
+      eventSource: { getSnapshot: eventWindow, subscribe: () => () => {} },
+    }) },
     slots: {
       inject: (_name: string, install: () => () => void) => install(),
       register: (options: typeof slotEntries[number]['options']) => {
@@ -64,31 +51,31 @@ function bench(options?: {
     },
   } as unknown as Context
   apply(ctx)
-  return { eventDefinitions, viewDefinitions, slotEntries }
+  return { slotEntries }
 }
 
 describe('Workflow plugin registration', () => {
   it('registers only the independently installable Workflow tab', () => {
     const result = bench()
     const entry = result.slotEntries.at(0)
-    expect(inject).toEqual(['slots', 'conversationEvents', 'conversationViews', 'sessions', 'locale'])
+    expect(inject).toEqual(['slots', 'sessions', 'locale'])
     expect(entry?.options.id).toBe('workflow')
     expect(entry?.options.order).toBe(15)
     expect(entry?.options.label()).toBe('Workflow')
-    expect(entry?.options.inject('session-1' as SessionId)).toMatchObject({ loadOlder: expect.any(Function) })
-    expect(result.viewDefinitions.map(definition => definition.target)).toContain('workflow')
-    expect(result.eventDefinitions.some(definition => definition.kind === 'workflow-assistant-step')).toBe(true)
+    expect(entry?.options.inject('session-1' as SessionId)).toMatchObject({
+      loadOlder: expect.any(Function),
+      eventWindow: expect.any(Function),
+    })
   })
 
-  it('detects paging changes from the Workflow view rather than raw Session snapshot identity', async () => {
+  it('detects paging changes from the Session event-window revision', async () => {
     const unchanged = bench()
     const unchangedLoadOlder = unchanged.slotEntries[0]?.options.inject('session-1' as SessionId) as {
       loadOlder: () => Promise<boolean>
     }
     expect(await unchangedLoadOlder.loadOlder()).toBe(false)
 
-    const next = { ...EMPTY_WORKFLOW_SNAPSHOT, eventNodes: [] }
-    const changed = bench({ workflowAfter: next })
+    const changed = bench({ pagingChanges: true })
     const changedLoadOlder = changed.slotEntries[0]?.options.inject('session-1' as SessionId) as {
       loadOlder: () => Promise<boolean>
     }
@@ -109,13 +96,16 @@ describe('Workflow plugin registration', () => {
 
   it('opts into the conversation height contract so its internal panes can scroll', () => {
     const snapshot = {
-      views: new Map([['workflow', EMPTY_WORKFLOW_SNAPSHOT]]),
-      turnTimings: new Map(),
       hasMore: false,
       loadingOlder: false,
     }
     const props = {
       useSession: (selector: (value: typeof snapshot) => unknown) => selector(snapshot),
+      useTrajectory: (selector: (value: typeof EMPTY_WORKFLOW_SNAPSHOT) => unknown) => selector(EMPTY_WORKFLOW_SNAPSHOT),
+      eventWindow: () => ({
+        entries: [], hasMore: false, revision: 0,
+        change: { kind: 'replace', entries: [] },
+      }),
       loadOlder: () => Promise.resolve(false),
       t: (key: string) => key,
     } as unknown as ComponentProps<typeof WorkflowView>

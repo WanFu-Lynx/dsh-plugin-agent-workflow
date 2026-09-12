@@ -6,15 +6,19 @@ import { describe, expect, it } from 'vitest'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 
 describe('standalone Workflow bundle', () => {
-  it('declares one patch row that mounts Workflow without Trajectory', () => {
+  it('declares one Workflow patch row and injects the current Trajectory client dependency', () => {
     const root = fileURLToPath(new URL('..', import.meta.url))
     const manifest = JSON.parse(
       readFileSync(resolve(root, 'package.json'), 'utf8'),
     ) as {
-      dsh?: { bundle?: { patch?: string }; client?: { platform?: string } }
+      dsh?: {
+        bundle?: { patch?: string }
+        client?: { inject?: string[]; platform?: string }
+      }
     }
     expect(manifest.dsh?.bundle?.patch).toBe('./cordis.patch.yml')
     expect(manifest.dsh?.client?.platform).toBe('web')
+    expect(manifest.dsh?.client?.inject).toContain('@deepseek-ai/dsh-client-ui-trajectory')
     const parsed = yaml.load(
       readFileSync(resolve(root, manifest.dsh!.bundle!.patch!), 'utf8'),
       { schema: entryListSchema },

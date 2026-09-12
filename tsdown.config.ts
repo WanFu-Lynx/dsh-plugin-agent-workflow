@@ -8,10 +8,10 @@ const PLUGIN_ID = 'dsh-plugin-agent-workflow'
 const CSS_MODULE_PREFIX = '\0workflow-css-module:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'
 /**
- * Module-table rows the running web shell already provides (rc.8 baseline):
- * React, Cordis, and the runtime / primitives client modules. Everything else
- * this plugin value-imports is inlined by the bundle, exactly like upstream
- * client plugins (dsh-session is an inline-safe wire layer; react-virtual,
+ * Module-table rows the running web shell already provides: React, Cordis,
+ * and the primitives client module. Everything else this plugin value-imports
+ * is inlined by the bundle, exactly like upstream client plugins (the Session
+ * surface helper is an inline-safe wire layer; react-virtual,
  * lucide-react and react-json-view-lite carry no cross-plugin identity).
  * Type-only imports are erased at build time and never reach this list.
  */
@@ -21,7 +21,6 @@ const CLIENT_EXTERNALS: readonly string[] = [
   'react-dom',
   'react-dom/client',
   '@deepseek-ai/cordis',
-  '@deepseek-ai/dsh-client-runtime/client',
   '@deepseek-ai/dsh-client-ui-primitives',
 ]
 const EXTERNAL_SET = new Set<string>(CLIENT_EXTERNALS)
@@ -68,7 +67,6 @@ const nodeConfig: UserConfig = {
   name: PLUGIN_ID,
   entry: {
     index: 'src/index.ts',
-    invariant: 'src/invariant.ts',
   },
   outDir: 'lib',
   format: 'esm',
@@ -90,7 +88,7 @@ const clientConfig: UserConfig = {
   sourcemap: true,
   clean: false,
   deps: {
-    // rc.8 module-graph rule: requested shell rows stay imports (the loader
+    // Current module-graph rule: requested shell rows stay imports (the loader
     // resolves them from its table at runtime); every other dependency —
     // wire layers, react-virtual, icon/text libraries — is bundled into the
     // plugin closure so a runtime require can never miss the table.

@@ -10,11 +10,18 @@ import {
   Clock3, LoaderCircle, MessageSquareText, Send, Workflow as WorkflowIcon, Wrench,
 } from 'lucide-react'
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {
+  SessionEventWindow, SessionSnapshot,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import type {
+  TrajectorySnapshot, UseTrajectory,
+} from '@deepseek-ai/dsh-client-ui-trajectory/client'
+import type { UseSession } from '@deepseek-ai/dsh-client-ui-session/client'
 import { CodeBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { deriveWorkflowLayout } from './projection/layout.ts'
 import type { WorkflowCellProps } from './projection/record.ts'
-import { EMPTY_WORKFLOW_SNAPSHOT } from './projection/snapshot-builder.ts'
+import { EMPTY_WORKFLOW_SNAPSHOT } from './projection/snapshot.ts'
 import {
   deriveWorkflowModel,
   type WorkflowCallModel,
@@ -22,12 +29,16 @@ import {
   type WorkflowTurnModel,
 } from './workflow-model.ts'
 import { WorkflowJsonInspector } from './WorkflowJsonInspector.tsx'
+import { attachRequestMessages } from './request-messages.ts'
 import css from './WorkflowView.module.css'
 
 /** Session-bound history paging for the Workflow view. */
 export interface WorkflowViewInjected {
   loadOlder: () => Promise<boolean>
+  eventWindow: () => SessionEventWindow
 }
+
+const EMPTY_TURN_TIMINGS = new Map<number, { readonly startTime: number; readonly endTime?: number }>()
 
 const TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
   hour: '2-digit', minute: '2-digit', second: '2-digit',
@@ -481,23 +492,31 @@ function CallRow({
 
 /** Full-height Workflow conversation view. */
 export function WorkflowView({
-  useSession, loadOlder, t,
-}: ConvViewProps & InjectFace<WorkflowViewInjected> & PropsLocale<'workflow'>) {
-  const inspection = useSession(snapshot => snapshot.views.get('workflow') ?? EMPTY_WORKFLOW_SNAPSHOT)
-  const turnTimings = useSession(snapshot => snapshot.turnTimings)
-  const hasOlder = useSession(snapshot => snapshot.hasMore)
-  const loadingOlder = useSession(snapshot => snapshot.loadingOlder)
+  useSession, useTrajectory, loadOlder, eventWindow, t,
+}: ConvViewProps & InjectFace<WorkflowViewInjected> & PropsLocale<'workflow'> & {
+  useSession: UseSession
+  useTrajectory: UseTrajectory
+}) {
+  const inspection = useTrajectory((snapshot: TrajectorySnapshot) => snapshot ?? EMPTY_WORKFLOW_SNAPSHOT)
+  const events = eventWindow()
+  const requests = useMemo(
+    () => attachRequestMessages(inspection.requests, events),
+    [events, inspection.requests],
+  )
+  const turnTimings = EMPTY_TURN_TIMINGS
+  const hasOlder = useSession((snapshot: SessionSnapshot) => snapshot.hasMore)
+  const loadingOlder = useSession((snapshot: SessionSnapshot) => snapshot.loadingOlder)
   const layout = useMemo(() => deriveWorkflowLayout({
     nodes: inspection.eventNodes,
     eventLocations: inspection.eventLocations,
     partial: inspection.partial,
     runningCalls: inspection.runningCalls,
-    requests: inspection.requests,
+    requests,
     callSchemas: inspection.callSchemas,
-  }), [inspection])
+  }), [inspection, requests])
   const model = useMemo(
-    () => deriveWorkflowModel(layout, inspection.requests, turnTimings),
-    [inspection.requests, layout, turnTimings],
+    () => deriveWorkflowModel(layout, requests, turnTimings),
+    [layout, requests, turnTimings],
   )
   const [historyPage, setHistoryPage] = useState(0)
   const historyLoadPending = useRef(false)

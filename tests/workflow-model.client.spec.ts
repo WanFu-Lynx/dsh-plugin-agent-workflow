@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { RequestView } from '@deepseek-ai/dsh-client-runtime/client'
+import type { RequestView } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { WorkflowProjectionTurnModel } from '../src/client/projection/layout.ts'
 import { deriveWorkflowModel } from '../src/client/workflow-model.ts'
 

@@ -30,17 +30,16 @@
 
 ## 数据来源
 
-工作流页面由 DeepSeek Harness Session 中真实记录的事件生成。系统提示词、消息、工具定义、响应和工具结果都来自对应模型调用的会话记录，不会从 Harness 源码中推测或重新拼接。
+工作流页面由 DeepSeek Harness Session 中真实记录的事件生成。系统提示词、工具定义、响应和工具结果来自内置 Trajectory 投影；`messages[]` 按 DSH 与模型请求相同的 Session surface 追加、替换规则，在每次请求边界重建。
 
 插件只读取并展示已有记录，不会向模型请求中增加消息、提示词或工具。
 
 ## 兼容版本
 
-当前 `0.1.x` 版本仅适配：
-
-```text
-dsh@0.1.0-rc.8
-```
+| 插件版本 | DSH 版本 |
+| --- | --- |
+| `0.2.x` | `dsh@0.1.5-alpha.1` |
+| `0.1.x` | `dsh@0.1.0-rc.8` |
 
 DeepSeek Harness 仍处于预发布阶段，不同 RC 版本的客户端接口可能发生变化。升级 DSH 后，需要同时安装与新版本适配的插件版本。
 
@@ -51,35 +50,46 @@ DeepSeek Harness 仍处于预发布阶段，不同 RC 版本的客户端接口�
 假设安装包位于当前目录：
 
 ```sh
-npx --yes @deepseek-ai/dsh@0.1.0-rc.8 plugin \
+npx --yes @deepseek-ai/dsh@0.1.5-alpha.1 plugin \
   --profile web \
-  add ./dsh-plugin-agent-workflow-0.1.1.tgz \
+  add ./dsh-plugin-agent-workflow-0.2.0.tgz \
   --workspace-root
 ```
 
 检查安装结果：
 
 ```sh
-npx --yes @deepseek-ai/dsh@0.1.0-rc.8 plugin \
+npx --yes @deepseek-ai/dsh@0.1.5-alpha.1 plugin \
   --profile web \
   list --depth 0
 ```
 
-列表中出现 `dsh-plugin-agent-workflow 0.1.1` 表示安装成功。重启 Web UI 后即可看到“工作流”标签页：
+列表中出现 `dsh-plugin-agent-workflow 0.2.0` 表示安装成功。重启 Web UI 后即可看到“工作流”标签页：
 
 ```sh
-npx --yes @deepseek-ai/dsh@0.1.0-rc.8 web
+npx --yes @deepseek-ai/dsh@0.1.5-alpha.1 web
 ```
 
 ### 从 GitHub 安装
 
-仓库发布 `v0.1.1` 标签后，可以直接安装固定版本：
+仓库发布 `v0.2.0` 标签后，可以直接安装固定版本。`web` profile：
 
 ```sh
-npx --yes @deepseek-ai/dsh@0.1.0-rc.8 plugin \
+npx --yes @deepseek-ai/dsh@0.1.5-alpha.1 plugin \
   --profile web \
-  add github:xuanyuanzhifeng/dsh-plugin-agent-workflow#v0.1.1 \
+  add github:xuanyuanzhifeng/dsh-plugin-agent-workflow#v0.2.0 \
   --workspace-root
+```
+
+`video` profile 使用相同插件版本：
+
+```sh
+npx --yes @deepseek-ai/dsh@0.1.5-alpha.1 plugin \
+  --profile video \
+  add github:xuanyuanzhifeng/dsh-plugin-agent-workflow#v0.2.0 \
+  --workspace-root
+
+pnpm dsh --profile video
 ```
 
 固定 Release 标签或 commit 可以避免安装内容随分支变化。只有在信任源码的情况下，才应允许包管理器执行 Git 依赖的构建脚本。
@@ -87,7 +97,7 @@ npx --yes @deepseek-ai/dsh@0.1.0-rc.8 plugin \
 ## 卸载
 
 ```sh
-npx --yes @deepseek-ai/dsh@0.1.0-rc.8 plugin \
+npx --yes @deepseek-ai/dsh@0.1.5-alpha.1 plugin \
   --profile web \
   remove dsh-plugin-agent-workflow \
   --workspace-root
