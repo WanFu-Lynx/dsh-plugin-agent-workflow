@@ -1,83 +1,85 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {
-  ConversationMatch, ConversationNodeDefinition, ConversationPromptSnapshot,
-  RequestPromptChange,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  ConversationNodeDefinition, RequestPromptInspector,
+  SystemPromptInspector, SystemPromptState,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { workflowNode } from './definition-common.ts'
 import type { WorkflowRequestHeaderState } from './contract.ts'
 
 /* jscpd:ignore-start -- The distributable Workflow plugin owns its target Definition and cannot import Trajectory's private Definition. */
 
-function requestPrompt(match: ConversationMatch): ConversationPromptSnapshot {
-  if (match.event.type !== 'request/header') {
-    throw new Error('workflow-request-header start requires request/header')
-  }
-  const header = match.event.data.header
-  const tools: unknown = header.tools
+/** System-prompt surface tracking retained until the next request header. */
+function workflowSystemMessageDefinition(
+  inspect: SystemPromptInspector,
+): ConversationNodeDefinition<SystemPromptState> {
   return {
-    config: header.config,
-    system: header.system ?? '',
-    tools: Array.isArray(tools) ? tools as ConversationPromptSnapshot['tools'] : [],
+    kind: 'workflow-system-message',
+    match: event =>
+      event.type === 'system/message' || ('surfaceOp' in event && event.surfaceOp !== 'append')
+        ? { id: String(event.seq), role: 'start' }
+        : null,
+    start: (_context, match, reader) => {
+      if (match.event.type === 'assistant/live-chunk') {
+        throw new Error('workflow-system-message start requires a durable event')
+      }
+      return inspect(
+        reader.previous<SystemPromptState>('workflow-system-message')?.state,
+        match.event,
+      )
+    },
+    update: context => context.state,
+    publication: () => 'none',
   }
 }
 
-function promptChange(
-  previous: ConversationPromptSnapshot | undefined,
-  prompt: ConversationPromptSnapshot,
-  match: ConversationMatch,
-): RequestPromptChange | undefined {
-  if (match.event.type !== 'request/header') return undefined
-  if (previous === undefined && match.event.data.reason !== 'initial') return undefined
-  const systemChanged = previous !== undefined && previous.system !== prompt.system
-  const toolsChanged = previous !== undefined
-    && JSON.stringify(previous.tools) !== JSON.stringify(prompt.tools)
-  if (previous !== undefined && !systemChanged && !toolsChanged) return undefined
+/** Request-header facts retained by the Workflow target. */
+function workflowRequestHeaderDefinition(
+  inspect: RequestPromptInspector,
+): ConversationNodeDefinition<WorkflowRequestHeaderState> {
   return {
-    seq: match.event.seq,
-    time: match.event.time,
-    kind: previous === undefined
-      ? 'initial'
-      : systemChanged && toolsChanged
-        ? 'system-and-tools'
-        : systemChanged ? 'system' : 'tools',
-    ...(previous === undefined ? {} : { previous }),
+    kind: 'workflow-request-header',
+    target: 'workflow',
+    match: event => event.type === 'request/header'
+      ? { id: String(event.seq), role: 'start' }
+      : null,
+    start: (_context, match, reader) => {
+      if (match.event.type !== 'request/header') {
+        throw new Error('workflow-request-header start requires request/header')
+      }
+      const previous = reader.previous<WorkflowRequestHeaderState>('workflow-request-header')
+        ?.state.prompt
+      const system = reader.previous<SystemPromptState>('workflow-system-message')
+        ?.state.effective
+      const inspection = inspect(previous, match.event, system)
+      return {
+        seq: match.event.seq,
+        time: match.event.time,
+        prompt: inspection.prompt,
+        location: match.location,
+        ...(inspection.change === undefined ? {} : { change: inspection.change }),
+      }
+    },
+    update: context => context.state,
+    buildViewNode: context => context.state === undefined
+      ? null
+      : workflowNode(context, context.state.seq, {
+        kind: 'request-header',
+        header: context.state,
+      }),
   }
-}
-
-const workflowRequestHeaderDefinition: ConversationNodeDefinition<WorkflowRequestHeaderState> = {
-  kind: 'workflow-request-header',
-  target: 'workflow',
-  match: event => event.type === 'request/header'
-    ? { id: String(event.seq), role: 'start' }
-    : null,
-  start: (_context, match, reader) => {
-    const prompt = requestPrompt(match)
-    const previous = reader.previous<WorkflowRequestHeaderState>('workflow-request-header')
-      ?.state.prompt
-    const change = promptChange(previous, prompt, match)
-    return {
-      seq: match.event.seq,
-      time: match.event.time,
-      prompt,
-      location: match.location,
-      ...(change === undefined ? {} : { change }),
-    }
-  },
-  update: context => context.state,
-  buildViewNode: context => context.state === undefined
-    ? null
-    : workflowNode(context, context.state.seq, {
-      kind: 'request-header',
-      header: context.state,
-    }),
 }
 
 /**
- * Register Workflow request-header facts.
+ * Register Workflow request-header facts using the canonical prompt inspector.
  *
- * @param ctx - Plugin context receiving the Definition.
+ * @param ctx - Plugin context receiving the Definitions.
  */
 export function registerWorkflowRequestHeaderDefinition(ctx: Context): void {
-  ctx.conversationEvents.register(workflowRequestHeaderDefinition)
+  ctx.uiConversation.events.register(workflowSystemMessageDefinition(
+    (previous, event) => ctx.uiConversation.inspectSystemPrompt(previous, event),
+  ))
+  ctx.uiConversation.events.register(workflowRequestHeaderDefinition(
+    (previous, event, system) => ctx.uiConversation.inspectRequestPrompt(previous, event, system),
+  ))
 }
 /* jscpd:ignore-end */

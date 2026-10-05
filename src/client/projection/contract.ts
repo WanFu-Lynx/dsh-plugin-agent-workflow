@@ -2,8 +2,10 @@ import type {
   AssistantMessageNode, ConversationLocation, ConversationNode,
   ConversationPromptSnapshot, ConversationViewNode, PartialAssistant,
   RequestPromptChange, RequestView, RunningToolCall, ToolCallBlock,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+
 import type { Message } from '@deepseek-ai/dsh-llm/types'
+import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 
 /** Assistant request enriched with Workflow-only request-boundary data. */
 export type WorkflowAssistantRequest = Extract<RequestView, { purpose: 'assistant' }> & {
@@ -94,9 +96,19 @@ export interface WorkflowSnapshot {
   readonly runningCalls: readonly RunningToolCall[]
 }
 
-declare module '@deepseek-ai/dsh-client-runtime/client' {
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ConversationViewSnapshotMap {
     /** Independently assembled data consumed by the Workflow view. */
     workflow: WorkflowSnapshot
+  }
+}
+
+/** Selector hook over the current Conversation binding's Workflow target. */
+export type UseWorkflow = SnapshotSelectorHook<WorkflowSnapshot>
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SessionStandardProps {
+    /** Selector hook over the current Session's Workflow target snapshot. */
+    useWorkflow: UseWorkflow
   }
 }

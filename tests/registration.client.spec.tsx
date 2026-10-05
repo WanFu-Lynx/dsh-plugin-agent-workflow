@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { apply, inject } from '../src/client/index.ts'
 import { WorkflowToolResult, WorkflowView } from '../src/client/WorkflowView.tsx'
 import { EMPTY_WORKFLOW_SNAPSHOT } from '../src/client/projection/snapshot-builder.ts'
@@ -26,25 +26,33 @@ function bench() {
     getSnapshot: () => ({ marker: 1 }),
     loadOlder: () => Promise.resolve(),
   }
+  const target = {
+    getSnapshot: () => EMPTY_WORKFLOW_SNAPSHOT,
+    subscribe: () => () => {},
+  }
   const ctx = {
     effect: (install: () => () => void) => install(),
     locale: {
       register: () => () => {},
       bind: () => (key: string) => key === 'view.workflow' ? 'Workflow' : key,
     },
-    conversationEvents: {
-      register: (definition: { kind: string }) => {
-        eventDefinitions.push(definition)
-        return () => {}
+    uiConversation: {
+      events: {
+        register: (definition: { kind: string }) => {
+          eventDefinitions.push(definition)
+          return () => {}
+        },
       },
-    },
-    conversationViews: {
-      register: (definition: { target: string }) => {
-        viewDefinitions.push(definition)
-        return () => {}
+      views: {
+        register: (definition: { target: string }) => {
+          viewDefinitions.push(definition)
+          return () => {}
+        },
       },
+      binding: () => ({ target: () => target }),
     },
     sessions: { binding: () => ({ session }) },
+    uiSession: { provide: () => () => {} },
     slots: {
       inject: (_name: string, install: () => () => void) => install(),
       register: (options: typeof slotEntries[number]['options']) => {
@@ -62,7 +70,7 @@ describe('Workflow plugin registration', () => {
   it('registers only the independently installable Workflow tab', () => {
     const result = bench()
     const entry = result.slotEntries.at(0)
-    expect(inject).toEqual(['slots', 'conversationEvents', 'conversationViews', 'sessions', 'locale'])
+    expect(inject).toEqual(['slots', 'sessions', 'uiConversation', 'uiSession', 'locale'])
     expect(entry?.options.id).toBe('workflow')
     expect(entry?.options.order).toBe(15)
     expect(entry?.options.label()).toBe('Workflow')
@@ -85,13 +93,13 @@ describe('Workflow plugin registration', () => {
 
   it('opts into the conversation height contract so its internal panes can scroll', () => {
     const snapshot = {
-      views: new Map([['workflow', EMPTY_WORKFLOW_SNAPSHOT]]),
-      turnTimings: new Map(),
       hasMore: false,
       loadingOlder: false,
     }
     const props = {
       useSession: (selector: (value: typeof snapshot) => unknown) => selector(snapshot),
+      useWorkflow: (selector: (value: typeof EMPTY_WORKFLOW_SNAPSHOT) => unknown) =>
+        selector(EMPTY_WORKFLOW_SNAPSHOT),
       loadOlder: () => Promise.resolve(false),
       t: (key: string) => key,
     } as unknown as ComponentProps<typeof WorkflowView>

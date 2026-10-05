@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {
   ConversationMatch, ConversationNodeContext, ConversationNodeDefinition,
   RunningToolCall, ToolCallBlock, ToolResultNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-tools/types'
 import { workflowNode } from './definition-common.ts'
 
@@ -31,13 +31,13 @@ function rootCall(match: ConversationMatch): RunningToolCall {
     throw new Error('workflow-tool-call start requires tool/call')
   }
   return {
+    phase: 'start',
     callId: String(match.event.data.callId),
     name: match.event.data.name,
     argsRaw: match.event.data.arguments,
     turn: match.event.data.turn,
     step: match.event.data.step,
     time: match.event.time,
-    callView: match.view?.for === 'call' ? match.view.view : null,
     subCalls: [],
   }
 }
@@ -47,20 +47,20 @@ function rootResult(
   previous?: RunningToolCall,
 ): ToolResultNode | undefined {
   if (match.event.type !== 'tool/result') return undefined
-  const result = match.event.data.message.content[0]
+  const message = match.event.data.message
   return {
     kind: 'tool-result',
     seq: match.event.seq,
     time: match.event.time,
-    callId: String(match.event.data.message.source.callId),
-    call: previous === undefined ? null : { name: previous.name, argsRaw: previous.argsRaw },
+    callId: String(message.source.callId),
+    call: previous === undefined
+      ? null
+      : { name: previous.name, argsRaw: previous.phase === 'start' ? previous.argsRaw : '' },
     callTime: previous?.time ?? null,
-    content: result.content,
-    isError: result.isError === true,
+    content: message.content,
+    isError: message.isError === true,
     ...(match.event.data.error === undefined ? {} : { error: match.event.data.error }),
     meta: match.event.data.meta,
-    callView: previous?.callView ?? null,
-    resultView: match.view?.for === 'result' ? match.view.view : null,
     subCalls: [],
   }
 }
@@ -77,13 +77,13 @@ function locationStep(match: ConversationMatch): number {
 
 function childCall(match: ConversationMatch, data: DispatchData): RunningToolCall {
   return {
+    phase: 'start',
     callId: data.subCallId,
     name: data.name,
     argsRaw: JSON.stringify(data.arguments),
     turn: locationTurn(match),
     step: locationStep(match),
     time: match.event.time,
-    callView: null,
     subCalls: [],
   }
 }
@@ -102,8 +102,6 @@ function childResult(
     callTime: previous === undefined || 'kind' in previous ? null : previous.time,
     content: data.content ?? [],
     isError: data.isError === true,
-    callView: null,
-    resultView: null,
     subCalls: [],
   }
 }
@@ -135,17 +133,17 @@ function acceptsEdge(state: ToolState, parent: string, child: string): boolean {
 
 function updateDispatch(state: ToolState, match: ConversationMatch): ToolState {
   const event = match.event
-  if (event.type !== 'tool/code-dispatch-start' && event.type !== 'tool/code-dispatch') return state
+  if (event.type !== 'tool/ptc-dispatch-start' && event.type !== 'tool/ptc-dispatch') return state
   const data = event.data
   const parentId = String(data.parentCallId)
   const childId = String(data.subCallId)
   const siblings = state.children.get(parentId) ?? []
   const index = siblings.indexOf(childId)
   if (index < 0 && !acceptsEdge(state, parentId, childId)) return state
-  if (event.type === 'tool/code-dispatch-start' && index >= 0) return state
+  if (event.type === 'tool/ptc-dispatch-start' && index >= 0) return state
 
   const calls = new Map(state.calls)
-  calls.set(childId, event.type === 'tool/code-dispatch-start'
+  calls.set(childId, event.type === 'tool/ptc-dispatch-start'
     ? childCall(match, data)
     : childResult(match, data, calls.get(childId)))
   if (index >= 0) return { ...state, calls }
@@ -189,13 +187,11 @@ function projectCall(
     seq: interruptedAt.seq - 0.8,
     time: interruptedAt.time,
     callId: block.callId,
-    call: { name: block.name, argsRaw: block.argsRaw },
+    call: { name: block.name, argsRaw: block.phase === 'start' ? block.argsRaw : '' },
     callTime: block.time,
     content: [],
     isError: true,
     error: { name: 'Interrupted', code: 'interrupted' },
-    callView: block.callView,
-    resultView: null,
     subCalls,
   }
 }
@@ -223,7 +219,7 @@ const workflowToolDefinition: ConversationNodeDefinition<ToolState> = {
     if (event.type === 'tool/result') {
       return { id: String(event.data.message.source.callId), role: 'update' }
     }
-    if (event.type === 'tool/code-dispatch-start' || event.type === 'tool/code-dispatch') {
+    if (event.type === 'tool/ptc-dispatch-start' || event.type === 'tool/ptc-dispatch') {
       const rootCallId: unknown = event.data.rootCallId
       return typeof rootCallId === 'string' && rootCallId !== ''
         ? { id: rootCallId, role: 'update' }
@@ -268,5 +264,5 @@ const workflowToolDefinition: ConversationNodeDefinition<ToolState> = {
  * @param ctx - Plugin context receiving the Definition.
  */
 export function registerWorkflowToolDefinition(ctx: Context): void {
-  ctx.conversationEvents.register(workflowToolDefinition)
+  ctx.uiConversation.events.register(workflowToolDefinition)
 }

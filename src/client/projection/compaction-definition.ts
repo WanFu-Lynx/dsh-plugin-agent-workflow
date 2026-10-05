@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {
   ConversationMatch, ConversationNodeDefinition,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-compaction/types'
 import type { WorkflowRequestView } from './contract.ts'
 import { workflowNode } from './definition-common.ts'
@@ -141,7 +141,7 @@ const workflowSessionEndDefinition: ConversationNodeDefinition<SessionEndState> 
  * @param ctx - Plugin context receiving the Definitions.
  */
 export function registerWorkflowCompactionDefinitions(ctx: Context): void {
-  ctx.conversationEvents.register(workflowCompactionDefinition)
-  ctx.conversationEvents.register(workflowSessionEndDefinition)
+  ctx.uiConversation.events.register(workflowCompactionDefinition)
+  ctx.uiConversation.events.register(workflowSessionEndDefinition)
 }
 /* jscpd:ignore-end */

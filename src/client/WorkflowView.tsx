@@ -12,7 +12,9 @@ import {
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { CodeBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
 import { deriveWorkflowLayout } from './projection/layout.ts'
+import type { WorkflowSnapshot } from './projection/contract.ts'
 import type { WorkflowCellProps } from './projection/record.ts'
 import { EMPTY_WORKFLOW_SNAPSHOT } from './projection/snapshot-builder.ts'
 import {
@@ -199,7 +201,7 @@ function RequestCard({
   t: PropsLocale<'workflow'>['t']
 }) {
   const request = call.request
-  const model = request?.requestConfig?.model ?? request?.provenance?.model
+  const model = request?.requestConfig?.model ?? request?.providerMetadata?.model
   const systemCount = request?.prompt?.system.trim() === '' || request?.prompt?.system === undefined ? 0 : 1
   const messageCount = call.messages.length
   const tools = request?.prompt?.tools.length ?? 0
@@ -481,12 +483,11 @@ function CallRow({
 
 /** Full-height Workflow conversation view. */
 export function WorkflowView({
-  useSession, loadOlder, t,
+  useWorkflow, useSession, loadOlder, t,
 }: ConvViewProps & InjectFace<WorkflowViewInjected> & PropsLocale<'workflow'>) {
-  const inspection = useSession(snapshot => snapshot.views.get('workflow') ?? EMPTY_WORKFLOW_SNAPSHOT)
-  const turnTimings = useSession(snapshot => snapshot.turnTimings)
-  const hasOlder = useSession(snapshot => snapshot.hasMore)
-  const loadingOlder = useSession(snapshot => snapshot.loadingOlder)
+  const inspection = useWorkflow((snapshot: WorkflowSnapshot) => snapshot ?? EMPTY_WORKFLOW_SNAPSHOT)
+  const hasOlder = useSession((snapshot: SessionSnapshot) => snapshot.hasMore)
+  const loadingOlder = useSession((snapshot: SessionSnapshot) => snapshot.loadingOlder)
   const layout = useMemo(() => deriveWorkflowLayout({
     nodes: inspection.eventNodes,
     eventLocations: inspection.eventLocations,
@@ -496,8 +497,8 @@ export function WorkflowView({
     callSchemas: inspection.callSchemas,
   }), [inspection])
   const model = useMemo(
-    () => deriveWorkflowModel(layout, inspection.requests, turnTimings),
-    [inspection.requests, layout, turnTimings],
+    () => deriveWorkflowModel(layout, inspection.requests),
+    [inspection.requests, layout],
   )
   const [historyPage, setHistoryPage] = useState(0)
   const historyLoadPending = useRef(false)

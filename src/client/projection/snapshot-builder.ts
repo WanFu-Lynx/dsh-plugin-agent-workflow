@@ -3,7 +3,7 @@ import type {
   AssistantMessageNode, ConversationNode, ConversationPromptSnapshot,
   ConversationViewBuilder, ConversationViewDefinition,
   ToolCallBlock,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {
   WorkflowAssistantRequest,
   WorkflowConversationViewNode, WorkflowRequestHeaderState, WorkflowSurfaceRecord,
@@ -333,6 +333,6 @@ export const workflowViewDefinition: ConversationViewDefinition<
  * @param ctx - Plugin context receiving the view Definition.
  */
 export function registerWorkflowConversationView(ctx: Context): void {
-  ctx.conversationViews.register(workflowViewDefinition)
+  ctx.uiConversation.views.register(workflowViewDefinition)
 }
 /* jscpd:ignore-end */

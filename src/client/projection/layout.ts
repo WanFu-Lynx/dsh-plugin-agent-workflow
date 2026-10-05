@@ -7,13 +7,12 @@ import type {
   AssistantBlock,
   AssistantMessageNode,
   ConversationLocation,
-  ConversationSnapshot,
   RequestInspectionSnapshot,
   RequestPromptChange,
   ToolCallBlock,
   ToolResultNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import type { WorkflowRequestView } from './contract.ts'
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { WorkflowRequestView, WorkflowSnapshot } from './contract.ts'
 import type {
   WorkflowCellProps,
   WorkflowSourceBlock,
@@ -35,10 +34,10 @@ export interface WorkflowProjectionTurnModel {
 
 /** Snapshot slice the workflow view folds. */
 export interface WorkflowLayoutInput {
-  nodes: ConversationSnapshot['nodes']
+  nodes: WorkflowSnapshot['eventNodes']
   eventLocations?: ReadonlyMap<number, ConversationLocation>
-  partial: ConversationSnapshot['partial']
-  runningCalls: ConversationSnapshot['runningCalls']
+  partial: WorkflowSnapshot['partial']
+  runningCalls: WorkflowSnapshot['runningCalls']
   requests?: readonly WorkflowRequestView[]
   callSchemas?: RequestInspectionSnapshot['callSchemas']
 }
@@ -73,7 +72,7 @@ type AssistantRequestView = Extract<WorkflowRequestView, { purpose: 'assistant' 
 type CompactionRequestView = Extract<WorkflowRequestView, { purpose: 'compaction' }>
 
 type InputNode = Extract<
-  ConversationSnapshot['nodes'][number],
+  WorkflowSnapshot['eventNodes'][number],
   { kind: 'user' | 'steering' | 'context' }
 >
 
@@ -81,7 +80,7 @@ type OrderedLayoutEntry =
   | {
     kind: 'node'
     seq: number
-    node: ConversationSnapshot['nodes'][number]
+    node: WorkflowSnapshot['eventNodes'][number]
     nodeIndex: number
   }
   | {
@@ -486,8 +485,8 @@ export function deriveWorkflowLayout(input: WorkflowLayoutInput): readonly Workf
       cell: {
         index: ++index,
         kind: 'tool',
-        ...summarizeCall(call.name, call.argsRaw),
-        inputDetail: call.argsRaw,
+        ...summarizeCall(call.name, call.phase === 'start' ? call.argsRaw : ''),
+        inputDetail: call.phase === 'start' ? call.argsRaw : '',
         callId: call.callId,
         timeSeconds: null,
         startedAt: finiteTime(call.time),
@@ -532,7 +531,7 @@ export function deriveWorkflowLayout(input: WorkflowLayoutInput): readonly Workf
  */
 export function appendWorkflowPartialLayout(
   turns: readonly WorkflowProjectionTurnModel[],
-  partial: ConversationSnapshot['partial'],
+  partial: WorkflowSnapshot['partial'],
   lastIndex: number,
 ): readonly WorkflowProjectionTurnModel[] {
   if (partial === null) return turns
@@ -859,7 +858,7 @@ function stringifySourceValue(value: unknown): string {
  */
 function enclosingUserTurn(
   followingAssistant: AssistantMessageNode | undefined,
-  partial: ConversationSnapshot['partial'],
+  partial: WorkflowSnapshot['partial'],
   lastAssistantTurn: number | null,
 ): number {
   if (followingAssistant !== undefined) return followingAssistant.turn
@@ -870,7 +869,7 @@ function enclosingUserTurn(
 
 function steeringPlacement(
   followingAssistant: AssistantMessageNode | undefined,
-  partial: ConversationSnapshot['partial'],
+  partial: WorkflowSnapshot['partial'],
   lastAssistantTurn: number | null,
   location: ConversationLocation | undefined,
 ): { turn: number; step?: number } {
@@ -893,7 +892,7 @@ function steeringPlacement(
 }
 
 function indexFollowingAssistants(
-  nodes: ConversationSnapshot['nodes'],
+  nodes: WorkflowSnapshot['eventNodes'],
 ): readonly (AssistantMessageNode | undefined)[] {
   const following = new Array<AssistantMessageNode | undefined>(nodes.length)
   let assistant: AssistantMessageNode | undefined
@@ -906,9 +905,9 @@ function indexFollowingAssistants(
 }
 
 function enclosingPromptTurn(
-  nodes: ConversationSnapshot['nodes'],
+  nodes: WorkflowSnapshot['eventNodes'],
   seq: number,
-  partial: ConversationSnapshot['partial'],
+  partial: WorkflowSnapshot['partial'],
 ): number {
   const next = nodes.find(node =>
     node.seq > seq && node.kind === 'assistant' && node.step > 0)
@@ -918,8 +917,8 @@ function enclosingPromptTurn(
 
 /** Earliest raw turn represented by the selected workflow branch. */
 function firstVisibleTurn(
-  nodes: ConversationSnapshot['nodes'],
-  partial: ConversationSnapshot['partial'],
+  nodes: WorkflowSnapshot['eventNodes'],
+  partial: WorkflowSnapshot['partial'],
 ): number {
   const turns = nodes.flatMap(node =>
     node.kind === 'assistant' && node.turn > 0
@@ -940,7 +939,7 @@ function attachUsage(cell: WorkflowCellProps, usage: UsageLike | undefined): voi
   if (usage.reasoningTokens !== undefined) cell.think = usage.reasoningTokens
 }
 
-function indexResults(nodes: ConversationSnapshot['nodes']): Map<string, ToolResultNode> {
+function indexResults(nodes: WorkflowSnapshot['eventNodes']): Map<string, ToolResultNode> {
   const map = new Map<string, ToolResultNode>()
   for (const node of nodes) {
     if (node.kind === 'tool-result') map.set(node.callId, node)
@@ -948,7 +947,7 @@ function indexResults(nodes: ConversationSnapshot['nodes']): Map<string, ToolRes
   return map
 }
 
-function indexAssistantCallIds(nodes: ConversationSnapshot['nodes']): ReadonlySet<string> {
+function indexAssistantCallIds(nodes: WorkflowSnapshot['eventNodes']): ReadonlySet<string> {
   const ids = new Set<string>()
   for (const node of nodes) {
     if (node.kind !== 'assistant') continue
@@ -1013,10 +1012,10 @@ function expandSubCalls(
           ? (sub.call !== null
             ? summarizeCall(sub.call.name, sub.call.argsRaw)
             : resultAsText(resultPreview))
-          : summarizeCall(sub.name, sub.argsRaw)),
+          : summarizeCall(sub.name, sub.phase === 'start' ? sub.argsRaw : '')),
         ...(settled
           ? (sub.call !== null ? { inputDetail: sub.call.argsRaw } : {})
-          : { inputDetail: sub.argsRaw }),
+          : { inputDetail: sub.phase === 'start' ? sub.argsRaw : '' }),
         ...(settled
           ? {
             outputDetail: detailResult(sub),

@@ -2,10 +2,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {
   ContextMessageNode, ConversationNodeDefinition, ConversationPreviousContext,
   SteeringMessageNode, UserMessageNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import {
-  contextForm, contextProvenance,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  contextForm, contextProducer,
+} from './event-projection.ts'
 import type {} from '@deepseek-ai/dsh-agent/types'
 import { workflowNode } from './definition-common.ts'
 
@@ -80,7 +80,7 @@ const workflowMessageDefinition: ConversationNodeDefinition<MessageNode> = {
         time: event.time,
         content: event.data.content,
         source: event.data.source,
-        provenance: contextProvenance(event.data.source),
+        producer: contextProducer(event.data.source),
         form: contextForm(event.data.source),
       }
     }
@@ -116,6 +116,6 @@ const workflowMessageDefinition: ConversationNodeDefinition<MessageNode> = {
  * @param ctx - Plugin context receiving the Definitions.
  */
 export function registerWorkflowMessageDefinitions(ctx: Context): void {
-  ctx.conversationEvents.register(workflowInboxDefinition)
-  ctx.conversationEvents.register(workflowMessageDefinition)
+  ctx.uiConversation.events.register(workflowInboxDefinition)
+  ctx.uiConversation.events.register(workflowMessageDefinition)
 }

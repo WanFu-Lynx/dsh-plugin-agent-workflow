@@ -2,11 +2,12 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {
   AssistantBlock, AssistantMessageNode, ConversationLocation, ConversationMatch,
   ConversationNodeContext, ConversationNodeDefinition, PartialAssistant,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-llm-retry/types'
 import {
-  displayFailureMessage, emptyAssistantBlock, isTokenDelta, toAssistantBlock,
+  displayFailure, emptyAssistantBlock, isTokenDelta, toAssistantBlock,
   toAssistantBlocks,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from './event-projection.ts'
 import type { WorkflowAssistantRequest } from './contract.ts'
 import { workflowNode } from './definition-common.ts'
 
@@ -105,7 +106,7 @@ function addUsage(current: UsageValue | undefined, next: UsageValue): UsageValue
 }
 
 function updateChunk(state: AssistantState, match: ConversationMatch): AssistantState {
-  if (match.event.type !== 'assistant/chunk') return state
+  if (match.event.type !== 'assistant/live-chunk') return state
   const chunk = match.event.data.chunk
   if (chunk.type === 'usage') {
     return { ...state, sawChunk: true, usage: addUsage(state.usage, chunk.usage) }
@@ -180,7 +181,7 @@ function fallbackState(context: ConversationNodeContext<AssistantState>): Assist
   let state: AssistantState | undefined
   for (const match of context.matches) {
     const event = match.event
-    if (event.type === 'assistant/chunk') {
+    if (event.type === 'assistant/live-chunk') {
       state ??= initialState(event.data.turn, event.data.step, event.seq, event.time, false)
       state = updateChunk(state, match)
     } else if (event.type === 'assistant/message') {
@@ -214,7 +215,7 @@ function finalNode(
       step: state.step,
       blocks: toAssistantBlocks(event.data.message.content),
       usage: event.data.usage,
-      provenance: {
+      providerMetadata: {
         provider: event.data.message.source.provider,
         model: event.data.message.source.model,
       },
@@ -271,7 +272,7 @@ function assistantRequest(
       ? {}
       : {
         resultSeq: node.seq,
-        ...(node.provenance === undefined ? {} : { provenance: node.provenance }),
+        ...(node.providerMetadata === undefined ? {} : { providerMetadata: node.providerMetadata }),
       }),
     ...(state.usage === undefined ? {} : { usage: state.usage }),
   }
@@ -285,7 +286,7 @@ const workflowAssistantDefinition: ConversationNodeDefinition<AssistantState> = 
     if (event.type === 'step/start') {
       return { id: `${event.data.turn}:${event.data.step}`, role: 'start' }
     }
-    if (event.type === 'assistant/chunk'
+    if (event.type === 'assistant/live-chunk'
       || event.type === 'assistant/message'
       || event.type === 'llm/retry'
       || event.type === 'step/end') {
@@ -306,7 +307,7 @@ const workflowAssistantDefinition: ConversationNodeDefinition<AssistantState> = 
     )
   },
   update: (context, match) => {
-    if (match.event.type === 'assistant/chunk') return updateChunk(context.state, match)
+    if (match.event.type === 'assistant/live-chunk') return updateChunk(context.state, match)
     if (match.event.type === 'assistant/message') {
       return {
         ...context.state,
@@ -329,7 +330,7 @@ const workflowAssistantDefinition: ConversationNodeDefinition<AssistantState> = 
       firstTokenTime: context.state.firstTokenTime,
       usage: context.state.usage,
       retry: {
-        message: displayFailureMessage(data.failure),
+        message: displayFailure(data.failure).message,
         retry: data.retry,
         ...(data.mode === 'normal' ? { maxRetries: data.maxRetries } : {}),
         delayMs: data.delayMs,
@@ -338,7 +339,7 @@ const workflowAssistantDefinition: ConversationNodeDefinition<AssistantState> = 
   },
   publication: (match) => {
     if (match.event.type === 'step/start') return 'none'
-    if (match.event.type !== 'assistant/chunk') return 'immediate'
+    if (match.event.type !== 'assistant/live-chunk') return 'immediate'
     const type = match.event.data.chunk.type
     return type === 'usage' || type === 'finish' ? 'none' : 'animation-frame'
   },
@@ -383,7 +384,7 @@ const workflowTurnEndDefinition: ConversationNodeDefinition<TurnEndState> = {
       turn: match.event.data.turn,
       seq: match.event.seq,
       time: match.event.time,
-      ...(reason.kind === 'error' ? { error: displayFailureMessage(reason.error) } : {}),
+      ...(reason.kind === 'error' ? { error: displayFailure(reason.error).message } : {}),
     }
   },
   update: context => context.state,
@@ -404,6 +405,6 @@ const workflowTurnEndDefinition: ConversationNodeDefinition<TurnEndState> = {
  * @param ctx - Plugin context receiving the Definitions.
  */
 export function registerWorkflowAssistantDefinition(ctx: Context): void {
-  ctx.conversationEvents.register(workflowAssistantDefinition)
-  ctx.conversationEvents.register(workflowTurnEndDefinition)
+  ctx.uiConversation.events.register(workflowAssistantDefinition)
+  ctx.uiConversation.events.register(workflowTurnEndDefinition)
 }
