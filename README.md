@@ -36,10 +36,10 @@
 
 ## 兼容版本
 
-当前 `0.1.x` 版本仅适配：
+当前 `0.4.x` 版本仅适配：
 
 ```text
-dsh@0.1.0-rc.7
+dsh@0.2.0-rc.2
 ```
 
 DeepSeek Harness 仍处于预发布阶段，不同 RC 版本的客户端接口可能发生变化。升级 DSH 后，需要同时安装与新版本适配的插件版本。
@@ -51,43 +51,45 @@ DeepSeek Harness 仍处于预发布阶段，不同 RC 版本的客户端接口�
 假设安装包位于当前目录：
 
 ```sh
-npx --yes @deepseek-ai/dsh@0.1.0-rc.7 plugin \
+npx --yes @deepseek-ai/dsh@0.2.0-rc.2 plugin \
   --profile web \
-  add ./dsh-plugin-agent-workflow-0.1.0.tgz \
+  add ./dsh-plugin-agent-workflow-0.4.0.tgz \
   --workspace-root
 ```
 
 检查安装结果：
 
 ```sh
-npx --yes @deepseek-ai/dsh@0.1.0-rc.7 plugin \
+npx --yes @deepseek-ai/dsh@0.2.0-rc.2 plugin \
   --profile web \
   list --depth 0
 ```
 
-列表中出现 `dsh-plugin-agent-workflow 0.1.0` 表示安装成功。重启 Web UI 后即可看到“工作流”标签页：
+列表中出现 `dsh-plugin-agent-workflow 0.4.0` 表示安装成功。重启 Web UI 后即可看到“工作流”标签页：
 
 ```sh
-npx --yes @deepseek-ai/dsh@0.1.0-rc.7 web
+npx --yes @deepseek-ai/dsh@0.2.0-rc.2 web
 ```
 
 ### 从 GitHub 安装
 
-仓库发布 `v0.1.0` 标签后，可以直接安装固定版本：
+本仓库尚未发布任何 tag 或 Release，因此无法按标签安装固定版本；请改为固定 commit SHA。
+
+注意仓库只包含源码，不含构建产物 `lib/`。git 安装时依赖 `prepare` 脚本现场构建，而 pnpm 默认拦截依赖的构建脚本：需要按报错提示，把包名加入 profile 目录下 `pnpm-workspace.yaml` 的 `allowBuilds` 后再重试，或直接安装上面构建好的 `.tgz`。
 
 ```sh
-npx --yes @deepseek-ai/dsh@0.1.0-rc.7 plugin \
+npx --yes @deepseek-ai/dsh@0.2.0-rc.2 plugin \
   --profile web \
-  add github:xuanyuanzhifeng/dsh-plugin-agent-workflow#v0.1.0 \
+  add github:WanFu-Lynx/dsh-plugin-agent-workflow#<commit-sha> \
   --workspace-root
 ```
 
-固定 Release 标签或 commit 可以避免安装内容随分支变化。只有在信任源码的情况下，才应允许包管理器执行 Git 依赖的构建脚本。
+固定 commit 可以避免安装内容随分支变化。只有在信任源码的情况下，才应允许包管理器执行 Git 依赖的构建脚本。
 
 ## 卸载
 
 ```sh
-npx --yes @deepseek-ai/dsh@0.1.0-rc.7 plugin \
+npx --yes @deepseek-ai/dsh@0.2.0-rc.2 plugin \
   --profile web \
   remove dsh-plugin-agent-workflow \
   --workspace-root
