@@ -56,7 +56,6 @@ const nodeConfig: UserConfig = {
   name: PLUGIN_ID,
   entry: {
     index: 'src/index.ts',
-    invariant: 'src/invariant.ts',
   },
   outDir: 'lib',
   format: 'esm',

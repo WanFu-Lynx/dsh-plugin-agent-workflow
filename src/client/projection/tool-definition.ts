@@ -4,6 +4,7 @@ import type {
   RunningToolCall, ToolCallBlock, ToolResultNode,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-tools/types'
+import { PartialArguments } from '@deepseek-ai/dsh-util-values'
 import { workflowNode } from './definition-common.ts'
 
 /* jscpd:ignore-start -- Workflow owns an independent event state machine so
@@ -35,6 +36,7 @@ function rootCall(match: ConversationMatch): RunningToolCall {
     callId: String(match.event.data.callId),
     name: match.event.data.name,
     argsRaw: match.event.data.arguments,
+    args: PartialArguments.fromText(match.event.data.arguments),
     turn: match.event.data.turn,
     step: match.event.data.step,
     time: match.event.time,
@@ -53,6 +55,8 @@ function rootResult(
     seq: match.event.seq,
     time: match.event.time,
     callId: String(message.source.callId),
+    name: previous?.name ?? '',
+    args: previous?.args ?? PartialArguments.EMPTY,
     call: previous === undefined
       ? null
       : { name: previous.name, argsRaw: previous.phase === 'start' ? previous.argsRaw : '' },
@@ -81,6 +85,7 @@ function childCall(match: ConversationMatch, data: DispatchData): RunningToolCal
     callId: data.subCallId,
     name: data.name,
     argsRaw: JSON.stringify(data.arguments),
+    args: PartialArguments.fromObject(data.arguments),
     turn: locationTurn(match),
     step: locationStep(match),
     time: match.event.time,
@@ -98,6 +103,8 @@ function childResult(
     seq: match.event.seq,
     time: match.event.time,
     callId: data.subCallId,
+    name: data.name,
+    args: PartialArguments.fromObject(data.arguments),
     call: { name: data.name, argsRaw: JSON.stringify(data.arguments) },
     callTime: previous === undefined || 'kind' in previous ? null : previous.time,
     content: data.content ?? [],
@@ -187,6 +194,8 @@ function projectCall(
     seq: interruptedAt.seq - 0.8,
     time: interruptedAt.time,
     callId: block.callId,
+    name: block.name,
+    args: block.args,
     call: { name: block.name, argsRaw: block.phase === 'start' ? block.argsRaw : '' },
     callTime: block.time,
     content: [],
